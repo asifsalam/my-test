@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="generator" content="pandoc" />
+
+		<meta name="author" content="Asif Salam" />
+
+		<title>Automating (Windows) Powerpoint with R</title>
+
+		<style type="text/css">
+			pre:not([class]) {
+				background-color: white;
+			}
+		</style>
+		<script type="text/javascript">
+			if (
+				window.hljs &&
+				document.readyState &&
+				document.readyState === "complete"
+			) {
+				window.setTimeout(function () {
+					hljs.initHighlighting()
+				}, 0)
+			}
+		</script>
+	</head>
+
+	<body>
+		<style type="text/css">
+			.main-container {
+				max-width: 940px;
+				margin-left: auto;
+				margin-right: auto;
+			}
+			code {
+				color: inherit;
+				background-color: rgba(0, 0, 0, 0.04);
+			}
+			img {
+				max-width: 100%;
+				height: auto;
+			}
+		</style>
+		<div class="container-fluid main-container">
+			<div id="header">
+				<h1 class="title">Automating (Windows) Powerpoint with R</h1>
+				<h4 class="author"><em>Asif Salam</em></h4>
+				<h4 class="date"><em>Monday, April 06, 2015</em></h4>
+			</div>
+
+			<p
+				>For many of us, there’s just no getting away from PowerPoint.
+				So if you use R (or Python) for data analysis, and PowerPoint
+				for presenting/distributing the results, it’s worthwhile
+				learning how to include this last step into your R workflow. In
+				this talk,
+				<a
+					href="https://www.youtube.com/watch?v=aKCXj1DyEhM"
+					title="S Anand"
+					>S Anand uses Python and <strong>pywin32</strong></a
+				>
+				to do some pretty nifty things with Powerpoint, from precisely
+				placing images, to some eye-popping animation.</p
+			>
+			<p
+				><a
+					href="http://www.omegahat.org/RDCOMClient/"
+					title="RCDOMClient"
+					><strong>RDCOMClient</strong></a
+				>
+				by Duncan Temple Lang allows you to do the same thing using R.
+				It provides the ability to “access and control applications such
+				as Excel, Word, Power Point, Web browsers etc.” Beyond
+				efficiency and repeatability, programmatic access enables you to
+				do things that just would not be possible with point and
+				click.</p
+			>
+			<p><strong>Warning: Gratuitous animation ahead!</strong></p>
+			<p
+				>In this post, we’ll go through how to recreate one of the
+				slides from Anand’s talk, with a few additions. In the end, we
+				should have a pretty neat PowerPoint slide with Clint Eastwood’s
+				filmography, using data from
+				<a href="http://www.imdb.org/" title="IMDB">IMDB</a>. (Clearly
+				PowerPoint has a powerful animation engine, and the
+				sophisticated object model allows you to programmatically
+				manipulate almost everything. It would have been too easy with
+				good documentation too, so Microsoft has organized it like a
+				puzzle with pieces hidden all over the place.)</p
+			>
+			<p
+				>Let’s get started. ##Setup I’m using: * Windows 7 (64bit) *
+				Office 2013 (64bit) * R version 3.1.3 * RStudio verison 0.98</p
+			>
+			<p
+				>We’ll need a few packages. 1.
+				<a
+					href="http://www.omegahat.org/RDCOMClient/"
+					title="RCDOMClient"
+					>RDOCMClient</a
+				>
+				by Duncan Temple Lang. COM client that allows us to manipulate
+				PowerPoint through R. 2.
+				<a
+					href="http://www.omegahat.org/RSXML/"
+					title="XML Package for R"
+					>XML</a
+				>
+				by Duncal Temp Lang. Parse XML files. 3.
+				<a href="http://www.imdb.org/" title="IMDB">rvest</a> by Hadley
+				Wickham. Easily scrape data from the web.</p
+			>
+			<p>Load the packages:</p>
+			<pre><code>install.packages(c(&quot;RDCOMClient&quot;,&quot;XML&quot;,&quot;rvest&quot;))
+library(&quot;RDCOMClient&quot;)
+library(&quot;XML&quot;)
+library(&quot;rvest&quot;)</code></pre>
+			<div id="rdcomclient-basics" class="section level2">
+				<h2>RDCOMClient Basics</h2>
+				<p
+					>Executing methods takes the form
+					<code>comObj$methodName(arg1,arg2,arg3,...)</code
+					>.<br />Setting properties takes the form
+					<code>myObj[[&quot;Property&quot;]] = TRUE</code>.
+					<code>COMCreate</code> starts a new instance of an
+					application.<br />With these basic capabilities, we can
+					access and manipulate all the objects exposed in the
+					PowerPoint API.</p
+				>
+				<p>Let’s create a new PowerPoint presentation from R In R,</p>
+				<pre class="r"><code># Start up PowerPoint 
+pp &lt;- COMCreate(&quot;Powerpoint.Application&quot;)
+
+# Make the application visible
+pp[[&quot;Visible&quot;]] = 1
+
+# Add a new presentation
+presentation &lt;- pp[[&quot;Presentations&quot;]]$Add()
+
+# The presentation is empty.  Add a slide to it.
+slide1 &lt;- presentation[[&quot;Slides&quot;]]$Add(1,ms$ppLayoutBlank)
+</code></pre>
+				<p
+					>The critical part is, of course, knowing what methods and
+					properties are available. This is where
+					<a
+						href="https://msdn.microsoft.com/en-us/library/office/ee861525.aspx"
+						title="PowerPoint 2013 Developer Reference"
+						>Microsoft’s PowerPoint 2013 Developer Reference</a
+					>
+					is handy, but not terribly user-friendly. As a start, let’s
+					recreate one of the examples there, “<a
+						href="https://msdn.microsoft.com/en-us/library/office/gg190747(v=office.14).aspx"
+						>Applying Animations to Shapes in Office 2010</a
+					>,” which works with Office 2013 as well.</p
+				>
+				<p>The VB Code is:</p>
+				<pre><code>Sub TestPickupAnimation()
+    With ActivePresentation.Slides(1)
+        Dim shp1, shp2, shp3 As Shape
+        ' Create the initial shape and apply the animations.
+        Set shp1 = .Shapes.AddShape(msoShape12pointStar, 20, 20, 100, 100)
+       
+        .TimeLine.MainSequence.AddEffect shp1, msoAnimEffectFadedSwivel, , msoAnimTriggerAfterPrevious
+        .TimeLine.MainSequence.AddEffect shp1, msoAnimEffectPathBounceRight, , msoAnimTriggerAfterPrevious
+        .TimeLine.MainSequence.AddEffect shp1, msoAnimEffectSpin, , msoAnimTriggerAfterPrevious
+       
+        ' Now create a second shape, and apply the same animation to it:
+        shp1.PickupAnimation
+       
+        Set shp2 = .Shapes.AddShape(msoShapeHexagon, 100, 20, 100, 100)
+        shp2.ApplyAnimation
+       
+        ' And one more:
+        Set shp3 = .Shapes.AddShape(msoShapeCloud, 180, 20, 100, 100)
+        shp3.ApplyAnimation
+       
+    End With
+End Sub
+</code></pre>
+				<p
+					>Now in R. Microsoft has defined a set of values for each
+					element of the presentation, such as shape, animation,
+					trigger, etc. I found a file somewhere that had all the
+					enumerations. I just read them into one variable,
+					<code>ms</code>. (In this case, the “empty” argument doesn’t
+					work from R. The
+					<a
+						href="https://msdn.microsoft.com/en-us/library/office/aa211626(v=office.11).aspx"
+						>AddEffect method</a
+					>
+					shows the arguments the method expect, and using a named
+					argument (trigger) works.</p
+				>
+				<pre><code>source(&quot;mso.txt&quot;)
+shp1 &lt;- slide1[[&quot;Shapes&quot;]]$AddShape(ms$msoShape12pointStar,20,20,100,100)
+slide1[[&quot;TimeLine&quot;]][[&quot;MainSequence&quot;]]$AddEffect(shp1,ms$msoAnimEffectFadedSwivel,
+                                                        trigger=ms$msoAnimTriggerAfterPrevious)
+slide1[[&quot;TimeLine&quot;]][[&quot;MainSequence&quot;]]$AddEffect(shp1,ms$msoAnimEffectPathBounceRight,
+                                                        trigger=ms$msoAnimTriggerAfterPrevious)
+slide1[[&quot;TimeLine&quot;]][[&quot;MainSequence&quot;]]$AddEffect(shp1,ms$msoAnimEffectSpin,
+                                                        trigger=ms$msoAnimTriggerAfterPrevious)
+
+shp1$PickupAnimation()
+shp2 &lt;- slide1[[&quot;Shapes&quot;]]$AddShape(ms$msoShapeHexagon,100,20,100,100)
+shp2$ApplyAnimation()
+
+shp3 &lt;- slide1[[&quot;Shapes&quot;]]$AddShape(ms$msoShapeCloud,180,20,100,200)
+shp3$ApplyAnimation()
+</code></pre>
+				<p
+					>This should create a presentation with the three shapes. If
+					you go into animation mode, the shapes should appear, with
+					the animations triggered.</p
+				>
+				<p
+					>We now know how to create a new presentation, add shapes
+					and some animation. Let’s see how we can set background and
+					fill colours.</p
+				>
+				<p
+					>Note that the <code>echo = FALSE</code> parameter was added
+					to the code chunk to prevent printing of the R code that
+					generated the plot.</p
+				>
+			</div>
+		</div>
+
+		<script>
+			// add bootstrap table styles to pandoc tables
+			$(document).ready(function () {
+				$("tr.header")
+					.parent("thead")
+					.parent("table")
+					.addClass("table table-condensed")
+			})
+		</script>
+
+		<!-- dynamically load mathjax for compatibility with self-contained -->
+		<script>
+			;(function () {
+				var script = document.createElement("script")
+				script.type = "text/javascript"
+				script.src =
+					"https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+				document.getElementsByTagName("head")[0].appendChild(script)
+			})()
+		</script>
+	</body>
+</html>
